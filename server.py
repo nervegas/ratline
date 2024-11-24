@@ -57,7 +57,7 @@ def consoleControl():
 		segCommand=(rawCommand+'     ').split(' ')
 		match(segCommand[0]):
 			case 'help':
-				nextOutput="[i]\tNIGGER"
+				nextOutput="[i]\thelp text goes here"
 			case 'list':
 				if(segCommand[1]=='threads'):
 					nextOutput=dumpHandlerMap()
